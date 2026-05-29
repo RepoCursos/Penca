@@ -1,0 +1,94 @@
+name: Deploy PencaKP to InfinityFree
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # PHP Setup
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        extensions: mbstring, xml, curl, zip, gd, pdo, pdo_mysql
+        tools: composer
+
+    - name: Install Composer Dependencies
+      run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+    - name: Generate .env file for production
+      run: |
+        echo "APP_NAME=PencaKP" >> .env
+        echo "APP_ENV=production" >> .env
+        echo "APP_KEY=${{ secrets.PROD_APP_KEY }}" >> .env
+        echo "APP_DEBUG=false" >> .env
+        echo "APP_URL=${{ secrets.PROD_APP_URL }}" >> .env
+        echo "" >> .env
+        echo "LOG_CHANNEL=stack" >> .env
+        echo "LOG_DEPRECATIONS_CHANNEL=null" >> .env
+        echo "LOG_LEVEL=error" >> .env
+        echo "" >> .env
+        echo "DB_CONNECTION=mysql" >> .env
+        echo "DB_HOST=${{ secrets.PROD_DB_HOST }}" >> .env
+        echo "DB_PORT=3306" >> .env
+        echo "DB_DATABASE=${{ secrets.PROD_DB_DATABASE }}" >> .env
+        echo "DB_USERNAME=${{ secrets.PROD_DB_USERNAME }}" >> .env
+        echo "DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}" >> .env
+        echo "" >> .env
+        echo "BROADCAST_DRIVER=log" >> .env
+        echo "CACHE_DRIVER=file" >> .env
+        echo "FILESYSTEM_DISK=local" >> .env
+        echo "QUEUE_CONNECTION=sync" >> .env
+        echo "SESSION_DRIVER=file" >> .env
+        echo "SESSION_LIFETIME=120" >> .env
+
+    - name: Cache Laravel configurations
+      run: |
+        php artisan config:cache
+        php artisan route:cache
+        php artisan view:cache
+
+    - name: Set permissions
+      run: |
+        chmod -R 775 storage bootstrap/cache
+        find storage -type f -exec chmod 644 {} \;
+        find storage -type d -exec chmod 775 {} \;
+        find bootstrap/cache -type f -exec chmod 644 {} \;
+        find bootstrap/cache -type d -exec chmod 775 {} \;
+
+    - name: Clean unnecessary files
+      run: |
+        rm -rf .git
+        rm -rf .github
+        rm -rf tests
+        rm -f .gitignore
+        rm -f .gitattributes
+        rm -f README.md
+        rm -f phpunit.xml
+        rm -f .editorconfig
+        rm -f .env.example
+        rm -f vite.config.js
+        rm -f package.json
+
+    - name: Deploy to FTP server
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        protocol: ftp
+        port: 21
+        local-dir: ./
+        server-dir: /htdocs/
+        dangerous-clean-slate: false
+        exclude: |
+          **/.git*
+          **/.git*/**
+        timeout: 600000
