@@ -11,36 +11,36 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+    
+    # Configuración de Node.js para Vite y Tailwind
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
 
-    # PHP Setup (working on the Laravel app in `src/`)
+    # Instalar dependencias de Node.js
+    - name: Install Node Dependencies
+      run: npm ci
+
+    # Compilar assets con Vite (producción)
+    - name: Build assets with Vite
+      run: npm run build
+
+    # PHP Setup
     - name: Set up PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.3'
-        extensions: mbstring, xml, curl, zip, gd, pdo, pdo_mysql
+        extensions: mbstring, xml, curl, zip, gd, iconv, pdo, pdo_mysql
         tools: composer
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
     - name: Install Composer Dependencies
-      working-directory: src
-      run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-
-    - name: Build front-end assets
-      working-directory: src
+      run: composer install --no-dev --prefer-dist --no-scripts --no-progress --optimize-autoloader
+        
+    - name: Generate .env file for production
       run: |
-        if [ -f package.json ]; then
-          npm ci
-          npm run build
-        fi
-
-    - name: Generate .env file for production (in src)
-      working-directory: src
-      run: |
-        echo "APP_NAME=PencaKP" > .env
+        echo "APP_NAME='Torneos Cup'" >> .env
         echo "APP_ENV=production" >> .env
         echo "APP_KEY=${{ secrets.PROD_APP_KEY }}" >> .env
         echo "APP_DEBUG=false" >> .env
@@ -63,18 +63,72 @@ jobs:
         echo "QUEUE_CONNECTION=sync" >> .env
         echo "SESSION_DRIVER=file" >> .env
         echo "SESSION_LIFETIME=120" >> .env
+        echo "" >> .env
+        echo "MAIL_MAILER=smtp" >> .env
+        echo "MAIL_HOST=${{ secrets.MAIL_HOST }}" >> .env
+        echo "MAIL_PORT=587" >> .env
+        echo "MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}" >> .env
+        echo "MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}" >> .env
+        echo "MAIL_ENCRYPTION=tls" >> .env
+        echo "MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}" >> .env
+        echo "MAIL_FROM_NAME='Torneos Cup'" >> .env
 
-    - name: Prepare release directory (src/release)
-      working-directory: src
+    # Crear .htaccess en raíz
+    - name: Create root .htaccess
       run: |
-        rm -rf release || true
-        mkdir -p release
-        rsync -a --delete --exclude='release' --exclude='.git' --exclude='.github' --exclude='tests' --exclude='node_modules' --exclude='.env*' --exclude='storage/logs/*' ./ release/
-        # copy dotfiles that rsync might skip
-        cp -f .htaccess release/ 2>/dev/null || true
-        cp -f .env release/.env || true
+        cat > .htaccess << 'EOF'
+        <IfModule mod_rewrite.c>
+            RewriteEngine On
+            
+            # Evitar bucles
+            RewriteCond %{REQUEST_URI} !^/public/
+            
+            # Redireccionar todo a public/
+            RewriteRule ^(.*)$ public/$1 [L]
+        </IfModule>
+        EOF
 
-    - name: Deploy to FTP server (upload release/ to /htdocs)
+    # Opcional pero recomendado para rendimiento (si no causa problemas)
+    - name: Cache Laravel configurations
+      run: |
+        php artisan config:cache
+        php artisan route:cache
+        php artisan view:cache
+
+    # Permisos correctos
+    - name: Set permissions
+      run: |
+        chmod -R 775 storage bootstrap/cache
+        find storage -type f -exec chmod 644 {} \;
+        find storage -type d -exec chmod 775 {} \;
+        find bootstrap/cache -type f -exec chmod 644 {} \;
+        find bootstrap/cache -type d -exec chmod 775 {} \;
+    
+    # Limpiar archivos innecesarios
+    - name: Clean unnecessary files
+      run: |
+        rm -rf node_modules
+        rm -rf .git
+        rm -rf .github
+        rm -rf tests
+        rm -f .gitignore
+        rm -f .gitattributes
+        rm -f README.md
+        rm -f package*.json
+        rm -f vite.config.js
+        rm -f tailwind.config.js
+        rm -f postcss.config.js
+        rm -f phpunit.xml
+        rm -f .editorconfig
+        rm -f .env.example
+        rm -rf resources/js
+        rm -rf resources/css
+        rm -rf resources/sass
+        rm -rf bootstrap/cache/config.php
+        rm -rf bootstrap/cache/routes-v7.php
+        rm -rf bootstrap/cache/services.php 
+
+    - name: Deploy to FTP server
       uses: SamKirkland/FTP-Deploy-Action@v4.3.4
       with:
         server: ${{ secrets.FTP_SERVER }}
@@ -82,10 +136,12 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         protocol: ftp
         port: 21
-        local-dir: src/release/
+        local-dir: ./
         server-dir: /htdocs/
         dangerous-clean-slate: false
         exclude: |
           **/.git*
           **/.git*/**
+          **/deploy/**
+
         timeout: 600000
