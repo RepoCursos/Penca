@@ -11,27 +11,25 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    # Configuración de Node.js para Vite y Tailwind
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
 
-<<<<<<< HEAD
-    # Instalar dependencias de Node.js
     - name: Install Node Dependencies
-      run: npm ci
+      run: |
+        if [ -f package.json ]; then
+          npm ci || npm install
+        fi
 
-    # Compilar assets con Vite (producción)
     - name: Build assets with Vite
-      run: npm run build
+      run: |
+        if [ -f package.json ]; then
+          npm run build
+        fi
 
-    # PHP Setup
-=======
-    # PHP Setup for the Laravel project root
->>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
     - name: Set up PHP
       uses: shivammathur/setup-php@v2
       with:
@@ -40,26 +38,11 @@ jobs:
         tools: composer
 
     - name: Install Composer Dependencies
-<<<<<<< HEAD
-      run: composer install --no-dev --prefer-dist --no-scripts --no-progress --optimize-autoloader
-        
-    - name: Generate .env file for production
-      run: |
-        echo "APP_NAME='Torneos Cup'" >> .env
-=======
       run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-
-    - name: Build front-end assets
-      run: |
-        if [ -f package.json ]; then
-          npm install
-          npm run build
-        fi
 
     - name: Generate .env file for production
       run: |
         echo "APP_NAME=PencaKP" > .env
->>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
         echo "APP_ENV=production" >> .env
         echo "APP_KEY=${{ secrets.PROD_APP_KEY }}" >> .env
         echo "APP_DEBUG=false" >> .env
@@ -90,68 +73,63 @@ jobs:
         echo "MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}" >> .env
         echo "MAIL_ENCRYPTION=tls" >> .env
         echo "MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}" >> .env
-        echo "MAIL_FROM_NAME='Torneos Cup'" >> .env
+        echo "MAIL_FROM_NAME='PencaKP'" >> .env
 
-<<<<<<< HEAD
-    # Crear .htaccess en raíz
-    - name: Create root .htaccess
-=======
     - name: Prepare release directory
->>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
       run: |
-        cat > .htaccess << 'EOF'
-        <IfModule mod_rewrite.c>
-            RewriteEngine On
-            
-            # Evitar bucles
-            RewriteCond %{REQUEST_URI} !^/public/
-            
-            # Redireccionar todo a public/
-            RewriteRule ^(.*)$ public/$1 [L]
-        </IfModule>
-        EOF
+        rm -rf release || true
+        mkdir -p release
+        rsync -a --delete --exclude='release' --exclude='.git' --exclude='.github' --exclude='tests' --exclude='node_modules' --exclude='.env*' --exclude='storage/logs/*' ./ release/
+        # copy public .htaccess if present
+        cp -f public/.htaccess release/.htaccess 2>/dev/null || true
+        cp -f .env release/.env || true
+        # if public/index.php exists, move its contents to release root and fix paths
+        if [ -f release/public/index.php ]; then
+          cp -f release/public/index.php release/index.php
+          sed -i "s|__DIR__.'/../vendor/autoload.php'|__DIR__.'/vendor/autoload.php'|g" release/index.php || true
+          sed -i "s|__DIR__.'/../bootstrap/app.php'|__DIR__.'/bootstrap/app.php'|g" release/index.php || true
+        fi
+        if [ -d release/public ]; then
+          cp -r release/public/* release/ || true
+          rm -rf release/public || true
+        fi
 
-    # Opcional pero recomendado para rendimiento (si no causa problemas)
     - name: Cache Laravel configurations
       run: |
-        php artisan config:cache
-        php artisan route:cache
-        php artisan view:cache
+        if php -v >/dev/null 2>&1; then
+          (cd release && php artisan config:cache) || true
+          (cd release && php artisan route:cache) || true
+          (cd release && php artisan view:cache) || true
+        fi
 
-    # Permisos correctos
     - name: Set permissions
       run: |
-        chmod -R 775 storage bootstrap/cache
-        find storage -type f -exec chmod 644 {} \;
-        find storage -type d -exec chmod 775 {} \;
-        find bootstrap/cache -type f -exec chmod 644 {} \;
-        find bootstrap/cache -type d -exec chmod 775 {} \;
-    
-    # Limpiar archivos innecesarios
+        chmod -R 775 release/storage release/bootstrap/cache || true
+        find release/storage -type f -exec chmod 644 {} \; || true
+        find release/storage -type d -exec chmod 775 {} \; || true
+
     - name: Clean unnecessary files
       run: |
-        rm -rf node_modules
-        rm -rf .git
-        rm -rf .github
-        rm -rf tests
-        rm -f .gitignore
-        rm -f .gitattributes
-        rm -f README.md
-        rm -f package*.json
-        rm -f vite.config.js
-        rm -f tailwind.config.js
-        rm -f postcss.config.js
-        rm -f phpunit.xml
-        rm -f .editorconfig
-        rm -f .env.example
-        rm -rf resources/js
-        rm -rf resources/css
-        rm -rf resources/sass
-        rm -rf bootstrap/cache/config.php
-        rm -rf bootstrap/cache/routes-v7.php
-        rm -rf bootstrap/cache/services.php 
+        rm -rf release/node_modules
+        rm -rf release/.git
+        rm -rf release/.github
+        rm -rf release/tests
+        rm -f release/.gitignore
+        rm -f release/.gitattributes
+        rm -f release/README.md
+        rm -f release/package*.json
+        rm -f release/vite.config.js
+        rm -f release/tailwind.config.js
+        rm -f release/postcss.config.js
+        rm -f release/phpunit.xml
+        rm -f release/.editorconfig
+        rm -f release/.env.example
+        rm -rf release/resources/js
+        rm -rf release/resources/css
+        rm -rf release/resources/sass
+        rm -rf release/bootstrap/cache/* || true
 
-    - name: Deploy to FTP server
+    - name: Deploy to FTP server (upload release/ to /htdocs)
       uses: SamKirkland/FTP-Deploy-Action@v4.3.4
       with:
         server: ${{ secrets.FTP_SERVER }}
@@ -159,11 +137,7 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         protocol: ftp
         port: 21
-<<<<<<< HEAD
-        local-dir: ./
-=======
         local-dir: release/
->>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
         server-dir: /htdocs/
         dangerous-clean-slate: false
         exclude: |
