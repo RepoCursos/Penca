@@ -19,6 +19,7 @@ jobs:
         node-version: '20'
         cache: 'npm'
 
+<<<<<<< HEAD
     # Instalar dependencias de Node.js
     - name: Install Node Dependencies
       run: npm ci
@@ -28,6 +29,9 @@ jobs:
       run: npm run build
 
     # PHP Setup
+=======
+    # PHP Setup for the Laravel project root
+>>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
     - name: Set up PHP
       uses: shivammathur/setup-php@v2
       with:
@@ -36,11 +40,26 @@ jobs:
         tools: composer
 
     - name: Install Composer Dependencies
+<<<<<<< HEAD
       run: composer install --no-dev --prefer-dist --no-scripts --no-progress --optimize-autoloader
         
     - name: Generate .env file for production
       run: |
         echo "APP_NAME='Torneos Cup'" >> .env
+=======
+      run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+    - name: Build front-end assets
+      run: |
+        if [ -f package.json ]; then
+          npm install
+          npm run build
+        fi
+
+    - name: Generate .env file for production
+      run: |
+        echo "APP_NAME=PencaKP" > .env
+>>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
         echo "APP_ENV=production" >> .env
         echo "APP_KEY=${{ secrets.PROD_APP_KEY }}" >> .env
         echo "APP_DEBUG=false" >> .env
@@ -73,8 +92,12 @@ jobs:
         echo "MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}" >> .env
         echo "MAIL_FROM_NAME='Torneos Cup'" >> .env
 
+<<<<<<< HEAD
     # Crear .htaccess en raíz
     - name: Create root .htaccess
+=======
+    - name: Prepare release directory
+>>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
       run: |
         cat > .htaccess << 'EOF'
         <IfModule mod_rewrite.c>
@@ -136,7 +159,11 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         protocol: ftp
         port: 21
+<<<<<<< HEAD
         local-dir: ./
+=======
+        local-dir: release/
+>>>>>>> 928f4b5 (Fix GitHub Actions deploy workflow: use repo root, npm install, prepare release/)
         server-dir: /htdocs/
         dangerous-clean-slate: false
         exclude: |
